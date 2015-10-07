@@ -25,7 +25,7 @@ def read_record(f, ignore_comments=True):
 
 
 def repair_record(file_name, column_names, record):
-    if file_name.endswith('/application'):
+    if os.path.basename(file_name) == 'application':
         if column_names[13] == 'description' and len(column_names) == 17:
             record = record[:13] + [''.join(record[13:-3])] + record[-3:]
         else:
@@ -33,63 +33,68 @@ def repair_record(file_name, column_names, record):
     return record
 
 
-def parse(tbz_path):
-    log.debug('Opening %s...', tbz_path)
-    with tarfile.open(tbz_path, 'r:bz2') as tar:
-        for member in tar:
-            if not member.isfile():
-                continue
-            log.debug('Parsing %s...', member.name)
-            with tar.extractfile(member) as f:
-                f.seek(-40, os.SEEK_END)
+def parse(path):
+    log.debug('Opening %s...', path)
+    if path.endswith('.tbz'):
+        with tarfile.open(path, 'r:bz2') as tar:
+            for member in tar:
+                if not member.isfile():
+                    continue
+                log.debug('Parsing %s...', member.name)
+                with tar.extractfile(member) as f:
+                    yield from parse_file(f, name=member.name)
+    else:
+        with open(path, 'rb') as f:
+            yield from parse_file(f, name=os.path.basename(path))
 
-                records_expected = int(
-                    f.read().decode('utf8')
-                    .rpartition('#recordsWritten:')[2]
-                    .rpartition(record_delim)[0]
-                )
-                log.debug('Records expected: %s', records_expected)
 
-                f.seek(0)
+def parse_file(f, name):
+    f.seek(-40, os.SEEK_END)
 
-                r = read_record(f, ignore_comments=False)
-                assert r.startswith('#')
-                column_names = r[1:].split(field_delim)
-                log.debug('Columns: %s', ', '.join(column_names))
+    records_expected = int(
+        f.read().decode('utf8')
+        .rpartition('#recordsWritten:')[2]
+        .rpartition(record_delim)[0]
+    )
+    log.debug('Records expected: %s', records_expected)
 
-                headers = {}
-                for j in range(6):
-                    r = read_record(f, ignore_comments=False)
-                    if not r or r.startswith('##legal:'):
-                        continue
-                    assert r.startswith('#') and ':' in r, repr(r)
-                    k, _, v = r[1:].partition(':')
-                    headers[k] = v.split(field_delim)
+    f.seek(0)
 
-                def record_gen():
-                    f.seek(0)
-                    while True:
-                        r = read_record(f, ignore_comments=True)
-                        if not r:
-                            break
-                        r = r.split(field_delim)
+    r = read_record(f, ignore_comments=False)
+    assert r.startswith('#')
+    column_names = r[1:].split(field_delim)
+    log.debug('Columns: %s', ', '.join(column_names))
 
-                        if len(r) > len(column_names):
-                            r = repair_record(file_name=member.name,
-                                              column_names=column_names,
-                                              record=r)
+    headers = {}
+    for j in range(6):
+        r = read_record(f, ignore_comments=False)
+        if not r or r.startswith('##legal:'):
+            continue
+        assert r.startswith('#') and ':' in r, repr(r)
+        k, _, v = r[1:].partition(':')
+        headers[k] = v.split(field_delim)
 
-                        assert len(r) == len(column_names), \
-                            '%d %d %r %r' % (len(r), len(column_names),
-                                             r, column_names)
-                        yield r
+    def record_gen():
+        f.seek(0)
+        while True:
+            r = read_record(f, ignore_comments=True)
+            if not r:
+                break
+            r = r.split(field_delim)
 
-                yield {
-                    'file_name': member.name,
-                    'records_expected': records_expected,
-                    'columns': list(zip(column_names, headers['dbTypes'])),
-                    'record_generator': record_gen,
-                    'primary_keys': [k for k in headers['primaryKey'] if k],
-                    'is_incremental':
-                        headers['exportMode'][0] == 'INCREMENTAL',
-                }
+            if len(r) > len(column_names):
+                r = repair_record(file_name=name, column_names=column_names,
+                                  record=r)
+
+            assert len(r) == len(column_names), \
+                '%d %d %r %r' % (len(r), len(column_names), r, column_names)
+            yield r
+
+    yield {
+        'file_name': name,
+        'records_expected': records_expected,
+        'columns': list(zip(column_names, headers['dbTypes'])),
+        'record_generator': record_gen,
+        'primary_keys': [k for k in headers['primaryKey'] if k],
+        'is_incremental': headers['exportMode'][0] == 'INCREMENTAL',
+    }
