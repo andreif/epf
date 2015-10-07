@@ -14,7 +14,7 @@ def read_record(f, ignore_comments=True):
         ln = f.readline()
         if not ln:
             break
-        ln = ln.decode('utf8')
+        ln = ln.decode('utf8').replace('\x00', '')
         if ignore_comments and not lines and ln.startswith('#'):
             continue
         lines.append(ln)
