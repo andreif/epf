@@ -29,3 +29,5 @@ f = lambda n: rx.match(n)
 for l in crawl(url, r=True, f=f):
     print(l)
 ```
+
+License: MIT
