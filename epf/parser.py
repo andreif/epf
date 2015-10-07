@@ -1,5 +1,8 @@
+import logging
 import os
 import tarfile
+
+log = logging.getLogger(__name__)
 
 record_delim = '\x02\n'
 field_delim = '\x01'
@@ -22,10 +25,12 @@ def read_record(f, ignore_comments=True):
 
 
 def parse(tbz_path):
+    log.debug('Opening %s...', tbz_path)
     with tarfile.open(tbz_path, 'r:bz2') as tar:
         for member in tar:
             if not member.isfile():
                 continue
+            log.debug('Parsing %s...', member.name)
             with tar.extractfile(member) as f:
                 f.seek(-40, os.SEEK_END)
 
@@ -34,12 +39,14 @@ def parse(tbz_path):
                     .rpartition('#recordsWritten:')[2]
                     .rpartition(record_delim)[0]
                 )
+                log.debug('Records expected: %s', records_expected)
 
                 f.seek(0)
 
                 r = read_record(f, ignore_comments=False)
                 assert r.startswith('#')
                 column_names = r[1:].split(field_delim)
+                log.debug('Columns: %s', ', '.join(column_names))
 
                 headers = {}
                 for j in range(6):
