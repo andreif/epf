@@ -24,6 +24,15 @@ def read_record(f, ignore_comments=True):
     return ''.join(lines) if lines else None
 
 
+def repair_record(file_name, column_names, record):
+    if file_name.endswith('/application'):
+        if column_names[13] == 'description' and len(column_names) == 17:
+            record = record[:13] + [''.join(record[13:-3])] + record[-3:]
+        else:
+            log.error('Unable to fix bad application description')
+    return record
+
+
 def parse(tbz_path):
     log.debug('Opening %s...', tbz_path)
     with tarfile.open(tbz_path, 'r:bz2') as tar:
@@ -64,7 +73,15 @@ def parse(tbz_path):
                         if not r:
                             break
                         r = r.split(field_delim)
-                        assert len(r) == len(column_names)
+
+                        if len(r) > len(column_names):
+                            r = repair_record(file_name=member.name,
+                                              column_names=column_names,
+                                              record=r)
+
+                        assert len(r) == len(column_names), \
+                            '%d %d %r %r' % (len(r), len(column_names),
+                                             r, column_names)
                         yield r
 
                 yield {
