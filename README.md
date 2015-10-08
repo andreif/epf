@@ -1,4 +1,10 @@
-# EPF parser
+# EPF crawler, downloader and parser
+
+```
+pip install epf
+```
+
+### Parser
 
 ```py
 import epf.parser
@@ -10,10 +16,19 @@ for table in epf.parser.parse('path/to/file.tbz'):
         print(dict(zip(column_names, r)))
 ```
 
+```py
+table = epf.parser.parse('path/to/table_file').next():
+print(table)
+column_names = [c[0] for c in table['columns']]
+for r in table['record_generator']():
+    print(dict(zip(column_names, r)))
+```
+
+### Crawler
 
 ```py
-import re
 import epf.crawler
+import re
 
 crawl = lambda u, r, f=None, d=False: \
     epf.crawler.crawl(url=u, auth=('user', 'pass'), recursive=r, filter_=f,
@@ -28,6 +43,14 @@ f = lambda n: rx.match(n)
 
 for l in crawl(url, r=True, f=f):
     print(l)
+```
+
+### Downloader
+
+```py
+import epf.downloader
+
+epf.downloader.download(tbz_url, tbz_path, auth=('user', 'pass'))
 ```
 
 License: MIT
