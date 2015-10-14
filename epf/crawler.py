@@ -6,8 +6,10 @@ log = logging.getLogger(__name__)
 
 
 def crawl(url, auth, recursive=True, filter_=None, yield_dirs=False):
-    log.debug('Fetching %s...', url)
+    log.debug('Crawling %s...', url)
     r = requests.get(url, auth=auth)
+    if r.status_code == 404:
+        return
     assert r.ok and '<th><a href="?C=N;O=D">Name</a></th>' in r.text
 
     for m in re.findall('href="([^"\?]+(/|\.tbz))"', r.text, flags=re.MULTILINE):
