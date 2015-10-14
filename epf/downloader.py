@@ -1,10 +1,11 @@
 import codecs
+import datetime
 import io
 import json
 import logging
 import os
 import shutil
-import datetime
+import statistics
 import requests
 import time
 from .ctx import DelayedKeyboardInterrupt
@@ -40,6 +41,15 @@ def tmf(n):
     return t
 
 
+def tmf2(n):
+    res = (n, 's')
+    for t, u in [(60, 'm'), (60, 'h'), (24, 'd')]:
+        if res[0] < t:
+            break
+        res = (res[0] / t, u)
+    return '%.1f%s' % res
+
+
 def check_md5(path):
     log.debug('Checking md5 of %s', path)
     r = os.system(
@@ -71,7 +81,7 @@ def download(url, save_to, auth, check_downloaded=False):
             log.debug('Already downloaded, not checking')
             return
 
-        log.debug('Requesting file headers...')
+        log.debug('Fetching headers...')
         r = requests.head(url, auth=auth)
         assert r.ok
 
@@ -79,10 +89,13 @@ def download(url, save_to, auth, check_downloaded=False):
         assert r.headers['accept-ranges'] == 'bytes'
 
         if os.path.exists(headers_path):
+            log.debug('Comparing etag...')
             with open(headers_path) as f:
                 h = json.loads(f.read())
+
             if h['etag'] != r.headers['etag']:
                 log.error('Warning: remote file changed: %r, %r', h, r.headers)
+
                 log.debug('Deleting all local files')
                 os.unlink(headers_path)
 
@@ -107,34 +120,40 @@ def download(url, save_to, auth, check_downloaded=False):
             with DelayedKeyboardInterrupt():
                 with open(md5_path, 'w+') as f:
                     f.write(r.text)
-        else:
-            log.debug('Checking md5 file...')
-            assert not os.system('grep tbz %s 1>/dev/null' % md5_path)
-
-        if check_downloaded and os.path.exists(download_path):
-            offset = os.path.getsize(download_path)
-
-            log.debug('Already downloaded, checking size and md5...')
-            if offset == total_size and check_md5(download_path):
-                log.debug('Correct file.')
-                return
-            else:
-                log.debug('Wrong file, deleting downloaded')
-                os.unlink(download_path)
 
         if os.path.exists(partial_path):
             offset = os.path.getsize(partial_path)
             if offset == total_size:
-                log.debug('Partial file seems complete, renaming')
+                log.debug('Partial file seems complete, renaming...')
                 with DelayedKeyboardInterrupt():
                     shutil.move(partial_path, download_path)
-                if check_md5(download_path):
-                    return
-                else:
-                    os.unlink(download_path)
-                    offset = 0
+            elif offset > total_size:
+                log.error('Error: offset > total size. Deleting part file')
+                os.unlink(partial_path)
+                offset = 0
+
         else:
             offset = 0
+
+        if os.path.exists(download_path):
+            log.debug('Already downloaded, checking size and md5...')
+
+            log.debug('Checking md5 file...')
+            assert not os.system('grep "%s" %s 1>/dev/null' % (
+                os.path.basename(download_path), md5_path))
+            log.debug('...looks valid')
+
+            offset = os.path.getsize(download_path)
+            if offset == total_size and check_md5(download_path):
+                log.debug('Downloaded file is valid.')
+                return
+            else:
+                if offset != total_size:
+                    log.debug('Wrong file size, deleting downloaded')
+                else:
+                    log.debug('Wrong md5 checksum, deleting downloaded')
+                os.unlink(download_path)
+                offset = 0
 
         rates_history = []
 
@@ -147,23 +166,17 @@ def download(url, save_to, auth, check_downloaded=False):
             if dt and prev_offset:
                 rate = float(offset - prev_offset) / dt
                 rates_history.insert(0, rate)
-                avg_rate = sum(rates_history[:10]) / len(rates_history[:10])
+                avg_rate = statistics.mean(rates_history[:10])
                 t = float(remain) / avg_rate
                 d = datetime.datetime.now() + datetime.timedelta(seconds=t)
 
                 s += '; rate = %6s/s' % szf(rate)
                 s += '; avg.rate = %6s/s, eta = %-8s (%s)' % (
-                    szf(avg_rate), tmf(t),
+                    szf(avg_rate), tmf2(t),
                     d.strftime('%H:%M')
                 )
             log.debug(s)
         log_progress()
-
-        if offset > total_size:
-            log.error('Error: offset > total size. Deleting part file')
-            os.unlink(partial_path)
-            offset = 0
-            log_progress()
 
         inset = int(min(offset, 10))
         inset_checked = False
@@ -198,10 +211,11 @@ def download(url, save_to, auth, check_downloaded=False):
                 for chunk in r.iter_content(chunk_size=chunk_size):
                     if chunk:  # filter out keep-alive new chunks
                         if inset and not inset_checked:
-                            log.debug('Checking inset: %s',
+                            log.debug('Comparing inset: %s...',
                                       codecs.encode(chunk[:inset], 'hex')
                                       .decode('utf8'))
                             assert inset_value == chunk[:inset]
+                            log.debug('...valid')
                             chunk = chunk[inset:]
                             inset_checked = True
 
@@ -217,14 +231,6 @@ def download(url, save_to, auth, check_downloaded=False):
                             prev_offset = offset
 
             log_progress(prev_offset, time.time() - t)
-
-            offset = os.path.getsize(partial_path)
-            if offset == total_size:
-                with DelayedKeyboardInterrupt():
-                    shutil.move(partial_path, download_path)
-                if not check_md5(download_path):
-                    os.unlink(download_path)
-                    continue
 
         else:
             log.error('Failed: %s %r', r.status_code, r.headers)
