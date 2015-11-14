@@ -12,4 +12,5 @@ setup(
     download_url='https://github.com/andreif/epf/tarball/' + v,
     license='MIT',
     packages=['epf'],
+    install_requires=['requests'],
 )
