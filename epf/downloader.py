@@ -6,7 +6,7 @@ import logging
 import os
 import shutil
 import statistics
-import requests
+import requests.structures
 import time
 from .ctx import DelayedKeyboardInterrupt
 
@@ -91,7 +91,8 @@ def download(url, save_to, auth, check_downloaded=False):
         if os.path.exists(headers_path):
             log.debug('Comparing etag...')
             with open(headers_path) as f:
-                h = json.loads(f.read())
+                _oph = requests.structures.CaseInsensitiveDict
+                h = json.loads(f.read(), object_pairs_hook=_oph)
 
             if h['etag'] != r.headers['etag']:
                 log.error('Warning: remote file changed: %r, %r', h, r.headers)
