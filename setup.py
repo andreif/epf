@@ -1,6 +1,6 @@
 from setuptools import setup
 
-v = '1.0.3'
+v = '1.0.4'
 
 setup(
     name='epf',
