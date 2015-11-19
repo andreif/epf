@@ -6,6 +6,7 @@ import logging
 import os
 import shutil
 import statistics
+import requests  # just because pycharm fails
 import requests.structures
 import time
 from .ctx import DelayedKeyboardInterrupt
@@ -79,7 +80,7 @@ def download(url, save_to, auth, check_downloaded=False):
 
         if not check_downloaded and os.path.exists(download_path):
             log.debug('Already downloaded, not checking')
-            return
+            return True
 
         log.debug('Fetching headers...')
         r = requests.head(url, auth=auth)
@@ -147,7 +148,7 @@ def download(url, save_to, auth, check_downloaded=False):
             offset = os.path.getsize(download_path)
             if offset == total_size and check_md5(download_path):
                 log.debug('Downloaded file is valid.')
-                return
+                return True
             else:
                 if offset != total_size:
                     log.debug('Wrong file size, deleting downloaded')
