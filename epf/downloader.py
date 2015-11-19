@@ -169,14 +169,18 @@ def download(url, save_to, auth, check_downloaded=False):
                 rate = float(offset - prev_offset) / dt
                 rates_history.insert(0, rate)
                 avg_rate = statistics.mean(rates_history[:10])
-                t = float(remain) / avg_rate
-                d = datetime.datetime.now() + datetime.timedelta(seconds=t)
 
                 s += '; rate = %6s/s' % szf(rate)
-                s += '; avg.rate = %6s/s, eta = %-8s (%s)' % (
-                    szf(avg_rate), tmf2(t),
-                    d.strftime('%H:%M')
-                )
+                s += '; avg.rate = %6s/s' % szf(avg_rate)
+
+                if avg_rate:
+                    t = float(remain) / avg_rate
+                    d = datetime.datetime.now() + datetime.timedelta(seconds=t)
+
+                    s += ', eta = %-8s (%s)' % (
+                        tmf2(t),
+                        d.strftime('%H:%M')
+                    )
             log.debug(s)
         log_progress()
 
