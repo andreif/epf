@@ -142,7 +142,9 @@ def download(url, save_to, auth, check_downloaded=False):
 
             log.debug('Checking md5 file...')
             assert not os.system('grep "%s" %s 1>/dev/null' % (
-                os.path.basename(download_path), md5_path))
+                    os.path.basename(download_path), md5_path)), \
+                "%r checksum is for another filename, not for %r" % (
+                    md5_path, download_path)
             log.debug('...looks valid')
 
             offset = os.path.getsize(download_path)
